@@ -113,6 +113,11 @@ cd pfsense-temp-monitor
 sh install.sh
 ```
 
+The installer picks up the files from the local clone when run this way.
+Otherwise it downloads them with `fetch` or `curl`, and if neither is
+available or a download fails it falls back to `git clone`, installing
+the `git` package with `pkg` first when needed.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

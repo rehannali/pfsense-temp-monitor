@@ -12,6 +12,8 @@
 #
 
 REPO_RAW="${TEMP_MONITOR_REPO:-https://raw.githubusercontent.com/rehannali/pfsense-temp-monitor/main}"
+REPO_GIT="${TEMP_MONITOR_REPO_GIT:-https://github.com/rehannali/pfsense-temp-monitor.git}"
+REPO_BRANCH="${TEMP_MONITOR_REPO_BRANCH:-main}"
 BIN_DIR="${TEMP_MONITOR_BIN_DIR:-/usr/local/bin}"
 CONF_FILE="${TEMP_MONITOR_CONF:-/usr/local/etc/temp_monitor.conf}"
 CRONTAB="${TEMP_MONITOR_CRONTAB:-/etc/crontab}"
@@ -52,6 +54,20 @@ download() {
     fi
 }
 
+# Make sure git is available, installing it with pkg if we can
+ensure_git() {
+    command -v git >/dev/null 2>&1 && return 0
+    command -v pkg >/dev/null 2>&1 || return 1
+    say "git not found; installing it with pkg"
+    pkg install -y git >/dev/null 2>&1 && command -v git >/dev/null 2>&1
+}
+
+# Clone the repository into $1 (shallow, single branch)
+clone_repo() {
+    ensure_git || return 1
+    git clone --quiet --depth 1 --branch "$REPO_BRANCH" "$REPO_GIT" "$1" 2>/dev/null
+}
+
 # Register a cron job in pfSense's own configuration so it survives
 # reboots and updates. Args: command minute hour mday month wday
 add_cron() {
@@ -69,7 +85,10 @@ echo ""
 [ "$(id -u)" = "0" ] || fail "This installer must be run as root"
 [ -f /etc/inc/config.inc ] || say "Note: this does not look like pfSense; continuing anyway"
 
-# 1. Get the scripts: from a local clone if there is one, otherwise download
+# 1. Get the scripts. In order of preference:
+#    a) a local clone, when the installer is run from one
+#    b) raw files downloaded with fetch or curl
+#    c) a git clone (git is installed with pkg if it is missing)
 SRC_DIR=""
 case "$0" in
     */*) [ -f "$(dirname "$0")/scripts/temp_monitor.sh" ] && SRC_DIR="$(dirname "$0")" ;;
@@ -79,18 +98,52 @@ esac
 TMP_DIR=$(mktemp -d /tmp/temp_monitor_install.XXXXXX) || fail "Could not create a temp directory"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-for f in $SCRIPTS temp_monitor.conf.sample; do
-    if [ -n "$SRC_DIR" ]; then
+# Copy the needed files from a source tree ($1) into $TMP_DIR
+copy_from_tree() {
+    for f in $SCRIPTS temp_monitor.conf.sample; do
         case "$f" in
-            *.sh) cp "$SRC_DIR/scripts/$f" "$TMP_DIR/$f" ;;
-            *)    cp "$SRC_DIR/$f" "$TMP_DIR/$f" ;;
+            *.sh) cp "$1/scripts/$f" "$TMP_DIR/$f" 2>/dev/null ;;
+            *)    cp "$1/$f" "$TMP_DIR/$f" 2>/dev/null ;;
         esac
-    else
+    done
+}
+
+# Download the needed files one by one into $TMP_DIR
+download_files() {
+    for f in $SCRIPTS temp_monitor.conf.sample; do
         case "$f" in
             *.sh) download "$REPO_RAW/scripts/$f" "$TMP_DIR/$f" ;;
             *)    download "$REPO_RAW/$f" "$TMP_DIR/$f" ;;
         esac
+    done
+}
+
+# True when every needed file is present and non-empty in $TMP_DIR
+have_all_files() {
+    for f in $SCRIPTS temp_monitor.conf.sample; do
+        [ -s "$TMP_DIR/$f" ] || return 1
+    done
+}
+
+if [ -n "$SRC_DIR" ]; then
+    say "Source: local copy in $SRC_DIR"
+    copy_from_tree "$SRC_DIR"
+else
+    if command -v fetch >/dev/null 2>&1 || command -v curl >/dev/null 2>&1; then
+        say "Source: downloading from $REPO_RAW"
+        download_files
+    else
+        say "Neither fetch nor curl found"
     fi
+    if ! have_all_files; then
+        say "Source: cloning $REPO_GIT with git"
+        clone_repo "$TMP_DIR/repo" \
+            || fail "Could not clone $REPO_GIT (git unavailable and pkg could not install it)"
+        copy_from_tree "$TMP_DIR/repo"
+    fi
+fi
+
+for f in $SCRIPTS temp_monitor.conf.sample; do
     [ -s "$TMP_DIR/$f" ] || fail "Could not get $f"
 done
 

@@ -1,0 +1,31 @@
+# pfSense Temperature Monitor - settings
+#
+# Installed as /usr/local/etc/temp_monitor.conf. Values here override the
+# defaults inside the scripts and are kept when you re-run the installer.
+# Remove the leading "#" from a line to change that setting.
+
+# Temperature thresholds (Celsius)
+#TEMP_INFO=60        # log only
+#TEMP_WARNING=70     # send a notification
+#TEMP_CRITICAL=80    # urgent notification
+#TEMP_EMERGENCY=90   # repeated notifications
+
+# Notification channels (true/false). Each one must also be configured in
+# pfSense under System > Advanced > Notifications.
+#ENABLE_EMAIL=true
+#ENABLE_TELEGRAM=true
+#ENABLE_SLACK=true
+#ENABLE_PUSHOVER=true
+
+# Send through every channel pfSense has configured, ignoring the toggles
+#USE_UNIFIED=false
+
+# Log file. /var/log is wiped on reboot if /var is a RAM disk; point this
+# at a path on disk (for example /root/temperature_monitor.log) to keep history.
+#LOG_FILE="/var/log/temperature_monitor.log"
+#LOG_RETENTION_DAYS=30
+
+# Minimum seconds between repeated alerts of the same level
+#COOLDOWN_WARNING=1800
+#COOLDOWN_CRITICAL=600
+#COOLDOWN_EMERGENCY=300
